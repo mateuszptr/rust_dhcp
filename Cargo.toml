@@ -1,0 +1,14 @@
+[package]
+name = "rust_dhcp"
+version = "0.1.0"
+authors = ["Mateusz Peter <mateusz.peter@student.put.poznan.pl>"]
+
+[dependencies]
+byteorder = {version = "1.2.3", features=["i128"]}
+bytes = {version = "0.4"}
+serde = "1.0.60"
+serde_json = "1.0.17"
+serde_derive = "1.0.60"
+actix = "0.5.7"
+actix_derive = "0.2.0"
+ipaddress = "0.1.2"
