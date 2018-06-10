@@ -3,7 +3,7 @@ use std::io::Cursor;
 use std::io::Read;
 use std::io;
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
-use bytes::{Buf, BufMut, BytesMut};
+use bytes::{Buf, BufMut};
 use std::collections::HashMap;
 
 pub struct DHCPHeader {

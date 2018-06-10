@@ -1,0 +1,16 @@
+{
+  "pool_start": "192.168.57.5",
+  "pool_end": "192.168.57.100",
+  "pool_mask": "255.255.255.0",
+  "dns": [
+    "4.4.4.4",
+    "8.8.8.8"
+  ],
+  "gateway": "192.168.57.1",
+  "statics": {
+    "192.168.57.10": "FF:FF:FF:FF:FF:FF"
+  },
+  "lease_time": 300,
+  "expiration_time": 300,
+  "iface": "vboxnet1"
+}
