@@ -1,3 +1,5 @@
+//Stałe:
+
 
 pub const SUBNET_MASK: u8 = 1;
 pub const ROUTER: u8 = 3;

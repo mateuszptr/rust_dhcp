@@ -6,6 +6,7 @@ use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
 use bytes::{Buf, BufMut};
 use std::collections::HashMap;
 
+// stała część pakietu DHCP
 pub struct DHCPHeader {
     pub op: u8,
     pub htype: u8,
@@ -21,11 +22,13 @@ pub struct DHCPHeader {
     pub chaddr: u64,
 }
 
+// Część o stałej długości + opcje
 #[derive(Message)]
 pub struct DHCPPacket {
     pub header: DHCPHeader,
     pub options: HashMap<u8, Vec<u8>>
 }
+
 
 impl DHCPPacket {
     pub fn from_vec(v: Vec<u8>) -> io::Result<Self> {

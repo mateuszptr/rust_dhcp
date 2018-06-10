@@ -6,6 +6,7 @@ use byteorder::{ReadBytesExt, NetworkEndian};
 use std::io::Cursor;
 
 
+// Surowa konfiguracja zebrana z JSONA
 #[derive(Serialize, Deserialize)]
 struct RawConfig {
     pool_start: String,
@@ -19,6 +20,7 @@ struct RawConfig {
     iface: String,
 }
 
+// Konfiguracja, która trafi do aktorów. Odpowiednio: pula adresów, maska, dnsy, brama i adres serwera DHCP, statyczne przydziały, czas dzierżawy, czas na który trzymamy adres po wygaśnięciu, interfejs gniazda
 #[derive(Clone)]
 pub struct Config {
     pub pool_range: Range<u32>,
@@ -31,6 +33,7 @@ pub struct Config {
     pub interface: String,
 }
 
+// Ip w formacie 192.168.0.1 na liczbę całkowitą
 fn get_ip(text: &String) -> u32 {
     let ip: Ipv4Addr = text.parse().unwrap();
     let mut octets = Cursor::new(ip.octets());
@@ -55,6 +58,7 @@ pub fn get_config(text: String) -> Config {
     }
 }
 
+/// wygenerowanie przykładowej konfiguracji
 #[test]
 fn serialize_config_test() {
     let mut statics = HashMap::new();

@@ -10,6 +10,8 @@ use std::ops::Range;
 use std::time::Duration;
 use std::u32;
 
+
+/// Stan danego adresu IP serwera. Odpowiednio, dzierżawiony, zarezerwowany dla przydzielania statycznego, wygasły, odrzucony przez DHCPDECLINE
 #[derive(PartialEq)]
 pub enum Status {
     Leasing,
@@ -18,13 +20,14 @@ pub enum Status {
     Declined,
 }
 
+// Dla danaego adresu IP przechowujemy odpowiadający mu adres MAC, stan, oraz uchwyt na future, które można anulować.
 struct MapEntry {
     status: Status,
     hwaddr: u64,
     spawn_handle: Option<SpawnHandle>,
 }
 
-
+// Stan aktora serwera. Mapa dzierżaw, konfiguracja, iterator dla puli adresów, adres aktora odpowiadającego za wysyłanie.
 pub struct ServerActor {
     lease_map: HashMap<u32, MapEntry>,
     conf: Config,
@@ -33,6 +36,7 @@ pub struct ServerActor {
 }
 
 impl ServerActor {
+    /// opcje dla wiadomość ACK i OFFER. Typ wiadomości, maska, router, ID serwera DHCP, czas dzierżawy
     fn ack_options(&self, message_type: u8) -> HashMap<u8, Vec<u8>> {
         let mut options = HashMap::new();
 
@@ -51,12 +55,14 @@ impl ServerActor {
         options
     }
 
+    /// opcje dla NAK. Tylko typ wiadomości.
     fn nak_options(&self) -> HashMap<u8, Vec<u8>> {
         let mut options = HashMap::new();
-
+        options.insert(DHCP_MESSAGE_TYPE, vec![DHCP_NAK]);
         options
     }
 
+    /// Ramka dla ACK lub OFFER
     fn ack_frame(&self, message_type: u8, mut packet: DHCPPacket, yiaddr: u32) -> DHCPPacket {
         let mut header = packet.header;
         header.yiaddr = yiaddr;
@@ -69,6 +75,7 @@ impl ServerActor {
         DHCPPacket { header, options }
     }
 
+    /// Ramka dla NAK
     fn nak_frame(&self, mut packet: DHCPPacket) -> DHCPPacket {
         let mut header = packet.header;
         header.siaddr = self.conf.gateway;
@@ -79,6 +86,7 @@ impl ServerActor {
         DHCPPacket { header, options }
     }
 
+    /// Adres IP wybrany przez klienta, o ile to możliwe. Jeśli nie, to następny z iteratora
     fn get_new_ipaddr(&mut self, wanted_ip: Option<u32>, hwaddr: u64) -> u32 {
         let mut new_ip;
 
@@ -95,6 +103,7 @@ impl ServerActor {
         new_ip
     }
 
+    /// Obsługa DHCPDISCOVER
     fn handle_discover(&mut self, mut packet: DHCPPacket, ctx: &mut Context<Self>) {
         println!("Handling discover");
         let wanted_ip;
@@ -108,6 +117,7 @@ impl ServerActor {
 
         let mut new_ip = self.get_new_ipaddr(wanted_ip, packet.header.chaddr);
 
+        // Po ustalonym czasie wysyłamy do siebie wiadomość o wygaśnięciu dzierżawy. Można anulować mając uchwyt.
         let spawn_handle = ctx.notify_later::<StatusMessage>(StatusMessage(Status::Expiring, new_ip), Duration::from_secs(self.conf.expiration_time as u64));
         let hwaddr = packet.header.chaddr;
         let status = Status::Expiring;
@@ -124,6 +134,7 @@ impl ServerActor {
         self.output_actor.do_send::<DHCPPacket>(frame);
     }
 
+    /// Obsługa DHCP_Request
     fn handle_request(&mut self, mut packet: DHCPPacket, ctx: &mut Context<Self>) {
         let wanted_ip;
         {
@@ -166,11 +177,13 @@ impl ServerActor {
         self.output_actor.do_send(frame);
     }
 
+    /// Do DHCPINFORM mamy politykę podobną do uczelnianej sieci - odrzucamy.
     fn handle_inform(&self, mut packet: DHCPPacket, ctx: &mut Context<Self>) {
         let frame = self.nak_frame(packet);
         self.output_actor.do_send(frame);
     }
 
+    /// Obsługa DHCPRELEASE
     fn handle_release(&mut self, packet: DHCPPacket, ctx: &mut Context<Self>) {
         let rel_ip = packet.header.ciaddr;
         let entry = self.lease_map.remove(&rel_ip);
@@ -184,6 +197,7 @@ impl ServerActor {
         };
     }
 
+    /// Obsługa DHCPDECLINE
     fn handle_decline(&mut self, packet: DHCPPacket, ctx: &mut Context<Self>) {
         let decl_ip = packet.header.ciaddr;
         let entry = self.lease_map.remove(&decl_ip);
@@ -222,6 +236,7 @@ impl Actor for ServerActor {
 impl Handler<DHCPPacket> for ServerActor {
     type Result = ();
 
+    /// Obsługa nadesłanych pakietów
     fn handle(&mut self, msg: DHCPPacket, ctx: &mut Context<Self>) {
         let dhcp_message_type;
         {
@@ -248,6 +263,7 @@ struct StatusMessage(Status, u32);
 impl Handler<StatusMessage> for ServerActor {
     type Result = ();
 
+    /// Obsługa wiadomości wysyłanych do siebie, o wygasających adresach.
     fn handle(&mut self, msg: StatusMessage, ctx: &mut Context<Self>) {
         let status = msg.0;
         let ip = msg.1;

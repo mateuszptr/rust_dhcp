@@ -4,6 +4,7 @@ use dhcp_frames::DHCPPacket;
 use server_actor::ServerActor;
 use config::Config;
 
+/// Socket i adres do wysłania
 pub struct OutputActor {
     socket: UdpSocket,
     bcast_addr: SocketAddr,
@@ -11,23 +12,12 @@ pub struct OutputActor {
 
 impl Actor for OutputActor {
     type Context = Context<Self>;
-
-//    fn started(&mut self, ctx: &mut Context<Self>) {
-////        let socket = self.socket.try_clone().unwrap();
-////        ctx.spawn(move || {
-////            loop {
-////                let mut buf = vec![0u8; 1024];
-////                let _ = socket.recv_from(&mut buf).unwrap();
-////                let packet = DHCPPacket::from_vec(buf).unwrap();
-////                self.server_actor.do_send(packet);
-////            }
-////        });
-//    }
 }
 
 impl Handler<DHCPPacket> for OutputActor {
     type Result = ();
 
+    /// Wysyłamy otrzymane wiadomości na socket, na adres do broadcastu.
     fn handle(&mut self, msg: DHCPPacket, ctx: &mut Context<Self>)  {
         println!("Sending frame to {}", self.bcast_addr);
         self.socket.send_to(msg.into_vec().as_slice(), self.bcast_addr);
