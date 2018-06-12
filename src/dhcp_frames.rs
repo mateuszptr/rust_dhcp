@@ -95,7 +95,7 @@ impl DHCPPacket {
 
     pub fn into_vec(self) -> Vec<u8> {
         let mut output: Vec<u8> = Vec::with_capacity(236);
-        let mut header = self.header;
+        let header = self.header;
 
         output.put_u8(header.op);
         output.put_u8(header.htype);
@@ -113,7 +113,7 @@ impl DHCPPacket {
         output.put_slice(&[0u8; 202]);
         output.put_u32_be(0x63_82_53_63u32);
 
-        let mut options: HashMap<u8, Vec<u8>> = self.options;
+        let options: HashMap<u8, Vec<u8>> = self.options;
 
         for (code, v) in options {
             output.put_u8(code);

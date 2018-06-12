@@ -11,6 +11,7 @@ extern crate actix;
 #[macro_use] extern crate actix_derive;
 
 extern crate libc;
+extern crate hwaddr;
 
 mod dhcp_frames;
 mod dhcp_options;
@@ -71,12 +72,12 @@ fn main() {
     let input_socket = socket.try_clone().expect("Couldn't clone the socket");
 
     // Aktor odpowiadający za wysyłanie wiadomości na socket
-    let output_actor: Addr<Syn, _> = OutputActor::new(config.clone(), socket).start();
-    // Aktor obsługujący logikę biznesową serwera DHCP
+    let output_actor: Addr<Syn, _> = OutputActor::new(socket).start();
+    // Aktor obsługujący logikę serwera DHCP
     let server_actor: Addr<Syn, _> = ServerActor::new(config, output_actor.clone()).start();
 
     // Tworzymy wątek odbierający w tle pakiety (recv_from) i wysyłający je do aktora serwera.
-    let input_thread_handle = thread::spawn(move || {
+    let _input_thread_handle = thread::spawn(move || {
         loop {
             println!("Creating buffer");
             let mut buf = vec![0u8; 1024];

@@ -7,8 +7,6 @@ pub const DOMAIN_NAME_SERVER: u8 = 6;
 
 pub const REQUESTED_IP_ADDRESS: u8 = 50;
 pub const IP_ADDRESS_LEASE_TIME: u8 = 51;
-pub const SERVER_IDENTIFIER: u8 = 54;
-pub const PARAMETER_REQUEST_LIST: u8 = 55;
 pub const DHCP_MESSAGE_TYPE: u8 = 53;
 pub const DHCP_SERVER_IDENTIFIER: u8= 54;
 

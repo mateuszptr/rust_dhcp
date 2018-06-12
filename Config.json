@@ -8,7 +8,8 @@
   ],
   "gateway": "192.168.57.1",
   "statics": {
-    "192.168.57.10": "FF:FF:FF:FF:FF:FF"
+    "192.168.57.6": "FF:FF:FF:FF:FF:FF",
+    "192.168.57.5": "08:00:27:73:42:4E"
   },
   "lease_time": 300,
   "expiration_time": 300,

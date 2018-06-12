@@ -30,6 +30,7 @@ struct MapEntry {
 // Stan aktora serwera. Mapa dzierżaw, konfiguracja, iterator dla puli adresów, adres aktora odpowiadającego za wysyłanie.
 pub struct ServerActor {
     lease_map: HashMap<u32, MapEntry>,
+    static_map: HashMap<u64, u32>,
     conf: Config,
     pool_iter: Cycle<Range<u32>>,
     output_actor: Addr<Syn, OutputActor>,
@@ -51,6 +52,8 @@ impl ServerActor {
         let lease_time: u32 = self.conf.lease_time.to_be();
         options.insert(IP_ADDRESS_LEASE_TIME, lease_time.to_bytes().to_vec());
 
+        let dns: Vec<u8> = self.conf.dns.iter().flat_map(|addr| {addr.to_bytes().to_vec()}).collect();
+        options.insert(DOMAIN_NAME_SERVER, dns);
 
         options
     }
@@ -63,7 +66,7 @@ impl ServerActor {
     }
 
     /// Ramka dla ACK lub OFFER
-    fn ack_frame(&self, message_type: u8, mut packet: DHCPPacket, yiaddr: u32) -> DHCPPacket {
+    fn ack_frame(&self, message_type: u8, packet: DHCPPacket, yiaddr: u32) -> DHCPPacket {
         let mut header = packet.header;
         header.yiaddr = yiaddr;
         header.siaddr = self.conf.gateway;
@@ -76,7 +79,7 @@ impl ServerActor {
     }
 
     /// Ramka dla NAK
-    fn nak_frame(&self, mut packet: DHCPPacket) -> DHCPPacket {
+    fn nak_frame(&self, packet: DHCPPacket) -> DHCPPacket {
         let mut header = packet.header;
         header.siaddr = self.conf.gateway;
         header.op = 0x02;
@@ -88,6 +91,10 @@ impl ServerActor {
 
     /// Adres IP wybrany przez klienta, o ile to możliwe. Jeśli nie, to następny z iteratora
     fn get_new_ipaddr(&mut self, wanted_ip: Option<u32>, hwaddr: u64) -> u32 {
+        if let Some(ip) = self.static_map.get(&hwaddr) {
+            return *ip;
+        }
+
         let mut new_ip;
 
         match wanted_ip {
@@ -104,7 +111,7 @@ impl ServerActor {
     }
 
     /// Obsługa DHCPDISCOVER
-    fn handle_discover(&mut self, mut packet: DHCPPacket, ctx: &mut Context<Self>) {
+    fn handle_discover(&mut self, packet: DHCPPacket, ctx: &mut Context<Self>) {
         println!("Handling discover");
         let wanted_ip;
         {
@@ -115,7 +122,7 @@ impl ServerActor {
             };
         }
 
-        let mut new_ip = self.get_new_ipaddr(wanted_ip, packet.header.chaddr);
+        let new_ip = self.get_new_ipaddr(wanted_ip, packet.header.chaddr);
 
         // Po ustalonym czasie wysyłamy do siebie wiadomość o wygaśnięciu dzierżawy. Można anulować mając uchwyt.
         let spawn_handle = ctx.notify_later::<StatusMessage>(StatusMessage(Status::Expiring, new_ip), Duration::from_secs(self.conf.expiration_time as u64));
@@ -135,7 +142,7 @@ impl ServerActor {
     }
 
     /// Obsługa DHCP_Request
-    fn handle_request(&mut self, mut packet: DHCPPacket, ctx: &mut Context<Self>) {
+    fn handle_request(&mut self, packet: DHCPPacket, ctx: &mut Context<Self>) {
         let wanted_ip;
         {
             let ciaddr = packet.header.ciaddr;
@@ -150,35 +157,36 @@ impl ServerActor {
             }
         }
 
-        let mut new_ip = self.get_new_ipaddr(wanted_ip, packet.header.chaddr);
+        let new_ip = self.get_new_ipaddr(wanted_ip, packet.header.chaddr);
 
+        if let None = self.static_map.get(&packet.header.chaddr) {
+            let spawn_handle = ctx.notify_later::<StatusMessage>(StatusMessage(Status::Leasing, new_ip), Duration::from_secs(self.conf.lease_time as u64));
+            let hwaddr = packet.header.chaddr;
+            let status = Status::Leasing;
+            let entry = MapEntry {
+                status: status,
+                spawn_handle: Some(spawn_handle),
+                hwaddr: hwaddr,
+            };
 
-        let spawn_handle = ctx.notify_later::<StatusMessage>(StatusMessage(Status::Leasing, new_ip), Duration::from_secs(self.conf.lease_time as u64));
-        let hwaddr = packet.header.chaddr;
-        let status = Status::Leasing;
-        let entry = MapEntry {
-            status: status,
-            spawn_handle: Some(spawn_handle),
-            hwaddr: hwaddr,
-        };
-
-        let prev_entry = self.lease_map.remove(&new_ip);
-        match prev_entry {
-            None => (),
-            Some(me) => match me.spawn_handle {
-                Some(sh) => {ctx.cancel_future(sh);},
+            let prev_entry = self.lease_map.remove(&new_ip);
+            match prev_entry {
                 None => (),
-            },
-        }
+                Some(me) => match me.spawn_handle {
+                    Some(sh) => { ctx.cancel_future(sh); },
+                    None => (),
+                },
+            }
 
-        self.lease_map.insert(new_ip, entry);
+            self.lease_map.insert(new_ip, entry);
+        }
 
         let frame = self.ack_frame(DHCP_ACK, packet, new_ip);
         self.output_actor.do_send(frame);
     }
 
     /// Do DHCPINFORM mamy politykę podobną do uczelnianej sieci - odrzucamy.
-    fn handle_inform(&self, mut packet: DHCPPacket, ctx: &mut Context<Self>) {
+    fn handle_inform(&self, packet: DHCPPacket, _ctx: &mut Context<Self>) {
         let frame = self.nak_frame(packet);
         self.output_actor.do_send(frame);
     }
@@ -221,6 +229,7 @@ impl ServerActor {
         let pool_iter = config.pool_range.clone().cycle();
         ServerActor {
             lease_map: HashMap::new(),
+            static_map: HashMap::new(),
             output_actor: output_actor,
             conf: config,
             pool_iter: pool_iter,
@@ -230,6 +239,19 @@ impl ServerActor {
 
 impl Actor for ServerActor {
     type Context = Context<Self>;
+
+    fn started(&mut self, _ctx: &mut Context<Self>) {
+        for (ip,mac) in &self.conf.statics {
+            let entry = MapEntry {
+                hwaddr: *mac,
+                status: Status::Reserved,
+                spawn_handle: None,
+            };
+
+            self.lease_map.insert(*ip, entry);
+            self.static_map.insert(*mac, *ip);
+        }
+    }
 }
 
 

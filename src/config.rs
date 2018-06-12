@@ -4,7 +4,7 @@ use std::net::Ipv4Addr;
 use serde_json;
 use byteorder::{ReadBytesExt, NetworkEndian};
 use std::io::Cursor;
-
+use hwaddr::HwAddr;
 
 // Surowa konfiguracja zebrana z JSONA
 #[derive(Serialize, Deserialize)]
@@ -44,7 +44,15 @@ pub fn get_config(text: String) -> Config {
     let raw_config: RawConfig = serde_json::from_str(&text).unwrap();
     let pool_range = get_ip(&raw_config.pool_start) .. get_ip(&raw_config.pool_end)+1;
     let dns: Vec<u32> = raw_config.dns.iter().map(|text| get_ip(text)).collect();
-    let statics: HashMap<u32, u64> = HashMap::new();
+    let mut statics: HashMap<u32, u64> = HashMap::new();
+
+    for (ip, mac) in raw_config.statics {
+        let ip = get_ip(&ip);
+        let mac = mac.parse::<HwAddr>().unwrap().octets();
+        let mac = Cursor::new(mac).read_uint::<NetworkEndian>(6).unwrap();
+
+        statics.insert(ip, mac);
+    }
 
     Config {
         pool_range: pool_range,
